@@ -735,7 +735,7 @@ process deepTools {
 
 
 /*
- * STEP 8 Avgprof/Heatmaps for tss and gene body using deepTools
+ * STEP 8 Avgprof/Heatmaps for tss and gene body using deepTools (split into separate processes for parallelizability)
  */
 
 
@@ -761,7 +761,6 @@ process deepTools_tss {
         --referencePoint TSS \\
         --beforeRegionStartLength 3000 \\
         --afterRegionStartLength 3000 \\
-        --regionBodyLength 5000 \\
         -R ${bed} \\
         -S ${bwig} \\
         --skipZeros \\
@@ -783,13 +782,12 @@ process deepTools_tss {
         --yAxisLabel "fold coverage" \\
         --plotTitle "Read Distribution: TSS" \\
         --regionsLabel " " \\
-        --plotHeight 10 \\
-        --plotWidth 15 \\
         --samplesLabel ${file_labels} \\
         --plotFileFormat pdf \\
         -out refpoint_profile.pdf
     """
 }
+
 
 process deepTools_genebody {
 
@@ -814,7 +812,6 @@ process deepTools_genebody {
         --afterRegionStartLength 3000 \\
         -R ${bed} \\
         -S ${bwig} \\
-        --regionBodyLength 5000 \\
         --skipZeros \\
         -o scale_matrix.gz
 
@@ -838,41 +835,6 @@ process deepTools_genebody {
         -out scale_profile.pdf
     """
 }
-
-
-//process ngsplot {
-//    tag "${input_bam_files[0].baseName}"
-//    publishDir "${params.outdir}/ngsplot", mode: 'copy'
-//
-//    input:
-//    file input_bam_files from bam_dedup_ngsplot.collect()
-//    file input_bai_files from bai_dedup_ngsplot.collect()
-//
-//    output:
-//    file '*.pdf' into ngsplot_results
-//
-//    when: REF_ngsplot
-//
-//    script:
-//    """
-//    ngs_config_generate.r $input_bam_files
-//
-//    ngs.plot.r \\
-//        -G $REF_ngsplot \\
-//        -R genebody \\
-//        -C ngsplot_config \\
-//        -O Genebody \\
-//        -D ensembl \\
-//        -FL 300
-//
-//    ngs.plot.r \\
-//        -G $REF_ngsplot \\
-//        -R tss \\
-//        -C ngsplot_config \\
-//        -O TSS \\
-//        -FL 300
-//    """
-//}
 
 
 /*
