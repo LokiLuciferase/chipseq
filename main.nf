@@ -641,6 +641,7 @@ process deepTools {
 
     output:
     file '*.{txt,pdf,png,npz,bw}' into deepTools_results
+    file '*.bw' into deeptools_dt_tss, deeptools_dt_genebody
     file '*.txt' into deepTools_multiqc
 
     script:
@@ -675,24 +676,6 @@ process deepTools {
            --extendReads ${params.extendReadsLen} \\
            --normalizeUsing RPKM \\
            -o ${bam}.bw
-
-        computeMatrix \\
-            scale-regions \\
-            --scoreFileName ${bam}.bw \\
-            --regionsFileName $bed \\
-            --beforeRegionStartLength 3000 \\
-            --afterRegionStartLength 3000 \\
-            --regionBodyLength 5000 \\
-            --outFileName computeMatrix.out.gz \\
-            --skipZeros \\
-            --smartLabels
-
-        plotProfile \\
-            --matrixFile computeMatrix.out.gz \\
-            --outFileName read_distribution_profile.pdf \\
-            --plotFileFormat pdf \\
-            --outFileNameData read_distribution_profile.txt \\
-            --plotTitle "Reads Distribution Profile"
         """
     } else {
         """
@@ -716,24 +699,6 @@ process deepTools {
               --normalizeUsing RPKM \\
               -o \${bamfile}.bw
         done
-
-        computeMatrix \\
-            scale-regions \\
-            --scoreFileName *.bw \\
-            --regionsFileName $bed \\
-            --beforeRegionStartLength 3000 \\
-            --afterRegionStartLength 3000 \\
-            --regionBodyLength 5000 \\
-            --outFileName computeMatrix.out.gz \\
-            --skipZeros \\
-            --smartLabels
-
-        plotProfile \\
-            --matrixFile computeMatrix.out.gz \\
-            --outFileName reads_distribution_profile.pdf \\
-            --plotFileFormat pdf \\
-            --outFileNameData read_distribution_profile.txt \\
-            --plotTitle "Reads Distribution Profile"
 
         multiBamSummary \\
             bins \\
@@ -770,7 +735,148 @@ process deepTools {
 
 
 /*
- * STEP 8.1 MACS
+ * STEP 8 Avgprof/Heatmaps for tss and gene body using deepTools
+ */
+
+
+process deepTools_tss {
+
+    tag "${bwig[0].baseName}"
+    publishDir "${outdir}/deeptools", mode: 'copy'
+
+    input:
+    file bwig from deeptools_dt_tss.collect()
+    file bed from bed
+
+    output:
+    file '*.pdf' into dt_tss_results
+
+    script:
+    file_labels = bwig.toList().collect{it.getName().minus(".dedup.sorted.bam.bw")}.sort().join(" ")
+    short_file_labels = bwig.toList().collect{it.getName().minus(".dedup.sorted.bam.bw").substring(0,16)}.sort().join(" ")
+
+    """
+    computeMatrix \\
+        reference-point \\
+        --referencePoint TSS \\
+        --beforeRegionStartLength 3000 \\
+        --afterRegionStartLength 3000 \\
+        --regionBodyLength 5000 \\
+        -R ${bed} \\
+        -S ${bwig} \\
+        --skipZeros \\
+        -o refpoint_matrix.gz
+
+    plotHeatmap \\
+        -m refpoint_matrix.gz \\
+        --colorMap Blues \\
+        --yAxisLabel "fold coverage" \\
+        --legendLocation none \\
+        --samplesLabel ${short_file_labels} \\
+        --plotFileFormat pdf \\
+        -out refpoint_heatmap.pdf
+
+    plotProfile \\
+        -m refpoint_matrix.gz \\
+        --plotType se \\
+        --perGroup \\
+        --yAxisLabel "fold coverage" \\
+        --plotTitle "Read Distribution: TSS" \\
+        --regionsLabel " " \\
+        --plotHeight 10 \\
+        --plotWidth 15 \\
+        --samplesLabel ${file_labels} \\
+        --plotFileFormat pdf \\
+        -out refpoint_profile.pdf
+    """
+}
+
+process deepTools_genebody {
+
+    tag "${bwig[0].baseName}"
+    publishDir "${outdir}/deeptools", mode: 'copy'
+
+    input:
+    file bwig from deeptools_dt_genebody.collect()
+    file bed from bed
+
+    output:
+    file '*.pdf' into dt_genebody_results
+
+    script:
+    file_labels = bwig.toList().collect{it.getName().minus(".dedup.sorted.bam.bw")}.sort().join(" ")
+    short_file_labels = bwig.toList().collect{it.getName().minus(".dedup.sorted.bam.bw").substring(0,16)}.sort().join(" ")
+
+    """
+    computeMatrix \\
+        scale-regions \\
+        --beforeRegionStartLength 3000 \\
+        --afterRegionStartLength 3000 \\
+        -R ${bed} \\
+        -S ${bwig} \\
+        --regionBodyLength 5000 \\
+        --skipZeros \\
+        -o scale_matrix.gz
+
+    plotHeatmap \\
+        -m scale_matrix.gz \\
+        --yAxisLabel "fold coverage" \\
+        --legendLocation none \\
+        --samplesLabel ${short_file_labels} \\
+        --plotFileFormat pdf \\
+        -out scale_heatmap.pdf
+
+    plotProfile \\
+        -m scale_matrix.gz \\
+        --plotType se \\
+        --perGroup \\
+        --yAxisLabel "fold coverage" \\
+        --plotTitle "Read Distribution: Gene Body" \\
+        --regionsLabel " " \\
+        --samplesLabel ${file_labels} \\
+        --plotFileFormat pdf \\
+        -out scale_profile.pdf
+    """
+}
+
+
+//process ngsplot {
+//    tag "${input_bam_files[0].baseName}"
+//    publishDir "${params.outdir}/ngsplot", mode: 'copy'
+//
+//    input:
+//    file input_bam_files from bam_dedup_ngsplot.collect()
+//    file input_bai_files from bai_dedup_ngsplot.collect()
+//
+//    output:
+//    file '*.pdf' into ngsplot_results
+//
+//    when: REF_ngsplot
+//
+//    script:
+//    """
+//    ngs_config_generate.r $input_bam_files
+//
+//    ngs.plot.r \\
+//        -G $REF_ngsplot \\
+//        -R genebody \\
+//        -C ngsplot_config \\
+//        -O Genebody \\
+//        -D ensembl \\
+//        -FL 300
+//
+//    ngs.plot.r \\
+//        -G $REF_ngsplot \\
+//        -R tss \\
+//        -C ngsplot_config \\
+//        -O TSS \\
+//        -FL 300
+//    """
+//}
+
+
+/*
+ * STEP 9.1 MACS
  */
 
 process macs {
